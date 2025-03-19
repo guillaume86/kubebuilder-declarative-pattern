@@ -597,7 +597,7 @@ func (r *Reconciler) parseManifest(ctx context.Context, instance DeclarativeObje
 func (r *Reconciler) transformManifest(ctx context.Context, instance DeclarativeObject, objects *manifest.Objects) error {
 	transforms := r.options.objectTransformations
 	if r.options.labelMaker != nil {
-		transforms = append(transforms, AddLabels(r.options.labelMaker(ctx, instance)))
+		transforms = append([]ObjectTransform{AddLabels(r.options.labelMaker(ctx, instance))}, transforms...)
 	}
 	// TODO(jrjohnson): apply namespace here
 	for _, t := range transforms {
