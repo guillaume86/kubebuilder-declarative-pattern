@@ -236,7 +236,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, request reconcile.Request) (
 		if statusInfo.Err == nil {
 			statusInfo.Err = err
 		}
-		log.Error(err, "error updating status")
+
+		// Unpack ErrorResult (for example a retry)
+		if errorResult, ok := statusInfo.Err.(*ErrorResult); ok {
+			result = errorResult.Result
+			statusInfo.Err = errorResult.Err
+		} else {
+			log.Error(err, "error updating status")
+		}
 	}
 
 	return result, statusInfo.Err
@@ -245,17 +252,30 @@ func (r *Reconciler) Reconcile(ctx context.Context, request reconcile.Request) (
 func (r *Reconciler) updateStatus(ctx context.Context, original DeclarativeObject, instance DeclarativeObject) error {
 	log := log.FromContext(ctx)
 
-	// Write the status if it has changed
-	oldStatus, err := utils.GetCommonStatus(original)
+	// // Write the status if it has changed
+	// oldStatus, err := utils.GetCommonStatus(original)
+	// if err != nil {
+	// 	log.Error(err, "error getting status")
+	// 	return err
+	// }
+	// newStatus, err := utils.GetCommonStatus(instance)
+	// if err != nil {
+	// 	log.Error(err, "error getting status")
+	// 	return err
+	// }
+
+	u_original, err := runtime.DefaultUnstructuredConverter.ToUnstructured(original)
 	if err != nil {
-		log.Error(err, "error getting status")
-		return err
+		return fmt.Errorf("error converting original to unstructured: %w", err)
 	}
-	newStatus, err := utils.GetCommonStatus(instance)
+
+	u_instance, err := runtime.DefaultUnstructuredConverter.ToUnstructured(instance)
 	if err != nil {
-		log.Error(err, "error getting status")
-		return err
+		return fmt.Errorf("error converting instance to unstructured: %w", err)
 	}
+
+	oldStatus := u_original["status"]
+	newStatus := u_instance["status"]
 
 	statusOperation := &UpdateStatusOperation{}
 
@@ -269,10 +289,19 @@ func (r *Reconciler) updateStatus(ctx context.Context, original DeclarativeObjec
 	}
 
 	if !reflect.DeepEqual(oldStatus, newStatus) {
+		//log.Info("status has changed, updating", "old", oldStatus, "new", newStatus)
+
 		if err := r.client.Status().Update(ctx, instance); err != nil {
+			if apierrors.IsConflict(err) {
+				log.Info("conflict updating status, retrying")
+				return &ErrorResult{Result: reconcile.Result{Requeue: true}, Err: nil}
+			}
+
 			log.Error(err, "error updating status")
 			return err
 		}
+	} else {
+		//log.Info("status has not changed, skipping update", "status", oldStatus)
 	}
 
 	for _, hook := range r.options.hooks {
