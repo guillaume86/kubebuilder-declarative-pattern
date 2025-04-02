@@ -124,26 +124,40 @@ func (r *FSRepository) LoadManifest(ctx context.Context, packageName string, id 
 	log.WithValues("package", packageName).Info("loading package")
 
 	dirPath := filepath.Join(r.basedir, "packages", packageName, id)
+	result := make(map[string]string)
+
+	err := loadDirectory(dirPath, result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func loadDirectory(dirPath string, result map[string]string) error {
 	filesPath, err := os.ReadDir(dirPath)
 	if err != nil {
-		return nil, fmt.Errorf("error reading directory %s: %v", dirPath, err)
+		return fmt.Errorf("error reading directory %s: %v", dirPath, err)
 	}
-	result := make(map[string]string)
 	for _, p := range filesPath {
+		filePath := filepath.Join(dirPath, p.Name())
 		if p.IsDir() {
-			log.V(2).Info("skipping directory", "directory", p.Name())
+			// Recursively handle subdirectories
+			err := loadDirectory(filePath, result)
+			if err != nil {
+				return err
+			}
 			continue
 		}
 
-		filePath := filepath.Join(dirPath, p.Name())
 		b, err := os.ReadFile(filePath)
 		if err != nil {
-			return nil, fmt.Errorf("error reading file %s: %v", filePath, err)
+			return fmt.Errorf("error reading file %s: %v", filePath, err)
 		}
 		result[filePath] = string(b)
 	}
 
-	return result, nil
+	return nil
 }
 
 type Channel struct {
