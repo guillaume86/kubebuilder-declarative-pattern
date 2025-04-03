@@ -575,7 +575,11 @@ func (r *Reconciler) BuildDeploymentObjectsWithFs(ctx context.Context, name type
 				fs.WriteFile(string(manifestPath), blob)
 			}
 		}
-		manifestObjects.Path = filepath.Dir(manifestPath)
+		// use the shortest path as the main manifest path
+		// proper fix would be to get the root path from r.loadRawManifest
+		if manifestObjects.Path == "" || len(filepath.Dir(manifestPath)) < len(manifestObjects.Path) {
+			manifestObjects.Path = filepath.Dir(manifestPath)
+		}
 		manifestObjects.Items = append(manifestObjects.Items, objects.Items...)
 		manifestObjects.Blobs = append(manifestObjects.Blobs, objects.Blobs...)
 	}
